@@ -51,6 +51,8 @@ from xml.etree import ElementTree
 from osgeo import gdal
 from osgeo import osr
 
+import struct
+
 try:
     from PIL import Image
     import numpy
@@ -952,9 +954,13 @@ def create_base_tile(tile_job_info, tile_detail, queue=None):
     wysize = tile_detail.wysize
     querysize = tile_detail.querysize
 
+    if options.xyz:
+        ty2 = (2 ** tz - 1) - ty
+    else:
+        ty2 = ty
     # Tile dataset in memory
     tilefilename = os.path.join(
-        output, str(tz), str(tx), "%s.%s" % (ty, tileext))
+        output, str(tz), str(tx), "%s.%s" % (ty2, tileext))
     dstile = mem_drv.Create('', tilesize, tilesize, tilebands)
 
     data = alpha = None
@@ -971,42 +977,45 @@ def create_base_tile(tile_job_info, tile_detail, queue=None):
                              band_list=list(range(1, dataBandsCount+1)))
         alpha = alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
 
+
     # The tile in memory is a transparent file by default. Write pixel values into it if
     # any
     if data:
-        if tilesize == querysize:
-            # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
-            dstile.WriteRaster(wx, wy, wxsize, wysize, data,
-                               band_list=list(range(1, dataBandsCount+1)))
-            dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
+        values = struct.unpack('B' * wxsize * wysize * dataBandsCount, data)
+        if sum(values) > 0:
+            if tilesize == querysize:
+                # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
+                dstile.WriteRaster(wx, wy, wxsize, wysize, data,
+                                   band_list=list(range(1, dataBandsCount+1)))
+                dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
 
-            # Note: For source drivers based on WaveLet compression (JPEG2000, ECW,
-            # MrSID) the ReadRaster function returns high-quality raster (not ugly
-            # nearest neighbour)
-            # TODO: Use directly 'near' for WaveLet files
+                # Note: For source drivers based on WaveLet compression (JPEG2000, ECW,
+                # MrSID) the ReadRaster function returns high-quality raster (not ugly
+                # nearest neighbour)
+                # TODO: Use directly 'near' for WaveLet files
+            else:
+                # Big ReadRaster query in memory scaled to the tilesize - all but 'near'
+                # algo
+                dsquery = mem_drv.Create('', querysize, querysize, tilebands)
+                # TODO: fill the null value in case a tile without alpha is produced (now
+                # only png tiles are supported)
+                dsquery.WriteRaster(wx, wy, wxsize, wysize, data,
+                                    band_list=list(range(1, dataBandsCount+1)))
+                dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
+
+                scale_query_to_tile(dsquery, dstile, tile_job_info.tile_driver, options,
+                                    tilefilename=tilefilename)
+                del dsquery
+            if options.resampling != 'antialias':
+                # Write a copy of tile to png/jpg
+                out_drv.CreateCopy(tilefilename, dstile, strict=0)
         else:
-            # Big ReadRaster query in memory scaled to the tilesize - all but 'near'
-            # algo
-            dsquery = mem_drv.Create('', querysize, querysize, tilebands)
-            # TODO: fill the null value in case a tile without alpha is produced (now
-            # only png tiles are supported)
-            dsquery.WriteRaster(wx, wy, wxsize, wysize, data,
-                                band_list=list(range(1, dataBandsCount+1)))
-            dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
-
-            scale_query_to_tile(dsquery, dstile, tile_job_info.tile_driver, options,
-                                tilefilename=tilefilename)
-            del dsquery
-
+            pass
+            #print("tile %s %s %s" % (tx, ty, tz))
     # Force freeing the memory to make sure the C++ destructor is called and the memory as well as
     # the file locks are released
     del ds
     del data
-
-    if options.resampling != 'antialias':
-        # Write a copy of tile to png/jpg
-        out_drv.CreateCopy(tilefilename, dstile, strict=0)
-
     del dstile
 
     # Create a KML file for this tile.
@@ -1021,7 +1030,6 @@ def create_base_tile(tile_job_info, tile_detail, queue=None):
 
     if queue:
         queue.put("tile %s %s %s" % (tx, ty, tz))
-
 
 def create_overview_tiles(tile_job_info, output_folder, options):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
@@ -1053,12 +1061,15 @@ def create_overview_tiles(tile_job_info, output_folder, options):
         tminx, tminy, tmaxx, tmaxy = tile_job_info.tminmax[tz]
         for ty in range(tmaxy, tminy - 1, -1):
             for tx in range(tminx, tmaxx + 1):
-
                 ti += 1
+                if options.xyz:
+                    ty2 = (2 ** tz - 1) - ty
+                else:
+                    ty2 = ty
                 tilefilename = os.path.join(output_folder,
                                             str(tz),
                                             str(tx),
-                                            "%s.%s" % (ty, tile_job_info.tile_extension))
+                                            "%s.%s" % (ty2, tile_job_info.tile_extension))
 
                 if options.verbose:
                     print(ti, '/', tcount, tilefilename)
@@ -1090,35 +1101,40 @@ def create_overview_tiles(tile_job_info, output_folder, options):
                     for x in range(2 * tx, 2 * tx + 2):
                         minx, miny, maxx, maxy = tile_job_info.tminmax[tz + 1]
                         if x >= minx and x <= maxx and y >= miny and y <= maxy:
-                            dsquerytile = gdal.Open(
-                                os.path.join(output_folder, str(tz + 1), str(x),
-                                             "%s.%s" % (y, tile_job_info.tile_extension)),
-                                gdal.GA_ReadOnly)
-                            if (ty == 0 and y == 1) or (ty != 0 and (y % (2 * ty)) != 0):
-                                tileposy = 0
+                            if options.xyz:
+                                y2 = (2 ** (tz+1) - 1) - y
                             else:
-                                tileposy = tile_job_info.tile_size
-                            if tx:
-                                tileposx = x % (2 * tx) * tile_job_info.tile_size
-                            elif tx == 0 and x == 1:
-                                tileposx = tile_job_info.tile_size
-                            else:
-                                tileposx = 0
-                            dsquery.WriteRaster(
-                                tileposx, tileposy, tile_job_info.tile_size,
-                                tile_job_info.tile_size,
-                                dsquerytile.ReadRaster(0, 0,
-                                                       tile_job_info.tile_size,
-                                                       tile_job_info.tile_size),
-                                band_list=list(range(1, tilebands + 1)))
-                            children.append([x, y, tz + 1])
+                                y2 = y
+                            filepath = os.path.join(output_folder, str(tz + 1), str(x),
+                                             "%s.%s" % (y2, tile_job_info.tile_extension))
+                            if os.path.exists(filepath):
+                                dsquerytile = gdal.Open(filepath,gdal.GA_ReadOnly)
+                                if (ty == 0 and y == 1) or (ty != 0 and (y % (2 * ty)) != 0):
+                                    tileposy = 0
+                                else:
+                                    tileposy = tile_job_info.tile_size
+                                if tx:
+                                    tileposx = x % (2 * tx) * tile_job_info.tile_size
+                                elif tx == 0 and x == 1:
+                                    tileposx = tile_job_info.tile_size
+                                else:
+                                    tileposx = 0
+                                dsquery.WriteRaster(
+                                    tileposx, tileposy, tile_job_info.tile_size,
+                                    tile_job_info.tile_size,
+                                    dsquerytile.ReadRaster(0, 0,
+                                                           tile_job_info.tile_size,
+                                                           tile_job_info.tile_size),
+                                    band_list=list(range(1, tilebands + 1)))
 
-                scale_query_to_tile(dsquery, dstile, tile_driver, options,
-                                    tilefilename=tilefilename)
-                # Write a copy of tile to png/jpg
-                if options.resampling != 'antialias':
+                                children.append([x, y, tz + 1])
+                if len(children) > 0:
+                    scale_query_to_tile(dsquery, dstile, tile_driver, options,
+                                        tilefilename=tilefilename)
                     # Write a copy of tile to png/jpg
-                    out_driver.CreateCopy(tilefilename, dstile, strict=0)
+                    if options.resampling != 'antialias':
+                        # Write a copy of tile to png/jpg
+                        out_driver.CreateCopy(tilefilename, dstile, strict=0)
 
                 if options.verbose:
                     print("\tbuild from zoom", tz + 1,
@@ -1164,6 +1180,9 @@ def optparse_init():
     p.add_option('-d', '--tmscompatible', dest="tmscompatible", action="store_true",
                  help=("When using the geodetic profile, specifies the base resolution "
                        "as 0.703125 or 2 tiles at zoom level 0."))
+    p.add_option("-x", "--xyz",
+                 action='store_true', dest='xyz',
+                 help="Use XYZ tile numbering instead of TMS")
     p.add_option("-v", "--verbose",
                  action="store_true", dest="verbose",
                  help="Print status messages to stdout")
@@ -1720,14 +1739,14 @@ class GDAL2Tiles(object):
             self.swne = (south, west, north, east)
 
             # Generate googlemaps.html
-            if self.options.webviewer in ('all', 'google') and self.options.profile == 'mercator':
+            if self.options.webviewer in ('all', 'google') and self.options.profile == 'mercator' and not self.options.xyz:
                 if (not self.options.resume or not
                         os.path.exists(os.path.join(self.output_folder, 'googlemaps.html'))):
                     with open(os.path.join(self.output_folder, 'googlemaps.html'), 'wb') as f:
                         f.write(self.generate_googlemaps().encode('utf-8'))
 
             # Generate openlayers.html
-            if self.options.webviewer in ('all', 'openlayers'):
+            if self.options.webviewer in ('all', 'openlayers') and not self.options.xyz:
                 if (not self.options.resume or not
                         os.path.exists(os.path.join(self.output_folder, 'openlayers.html'))):
                     with open(os.path.join(self.output_folder, 'openlayers.html'), 'wb') as f:
@@ -1827,8 +1846,12 @@ class GDAL2Tiles(object):
             for tx in range(tminx, tmaxx+1):
 
                 ti += 1
+                if self.options.xyz:
+                    ty2 = (2 ** tz - 1) - ty
+                else:
+                    ty2 = ty
                 tilefilename = os.path.join(
-                    self.output_folder, str(tz), str(tx), "%s.%s" % (ty, self.tileext))
+                    self.output_folder, str(tz), str(tx), "%s.%s" % (ty2, self.tileext))
                 if self.options.verbose:
                     print(ti, '/', tcount, tilefilename)
 
@@ -2323,6 +2346,7 @@ class GDAL2Tiles(object):
         args = {}
         args['title'] = self.options.title.replace('"', '\\"')
         args['htmltitle'] = self.options.title
+        args['tms'] = str(not self.options.xyz).lower()
         args['south'], args['west'], args['north'], args['east'] = self.swne
         args['centerlon'] = (args['north'] + args['south']) / 2.
         args['centerlat'] = (args['west'] + args['east']) / 2.
@@ -2389,7 +2413,7 @@ class GDAL2Tiles(object):
         var white = L.tileLayer("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEAAQMAAABmvDolAAAAA1BMVEX///+nxBvIAAAAH0lEQVQYGe3BAQ0AAADCIPunfg43YAAAAAAAAAAA5wIhAAAB9aK9BAAAAABJRU5ErkJggg==");
 
         // Overlay layers (TMS)
-        var lyr = L.tileLayer('./{z}/{x}/{y}.%(tileformat)s', {tms: true, opacity: 0.7, attribution: "%(copyright)s"});
+        var lyr = L.tileLayer('./{z}/{x}/{y}.%(tileformat)s', {tms: %(tms)s, opacity: 0.7, attribution: "%(copyright)s"});
 
         // Map
         var map = L.map('map', {
