@@ -16,3 +16,32 @@ at windows console
 
 bash  
 find . -type d -empty -delete  
+
+## upload to s3
+bash
+pip install aws  
+aws configure --profile MY_PROFILE  
+	AWS Access Key ID [None]: MY_KEY  
+	AWS Secret Access Key [None]: MY_SECRET_KEY  
+	Default region name [None]: ap-northeast-1  
+	Default output format [None]: json  
+
+aws configure set default.s3.max_concurrent_requests 100  
+aws configure set default.s3.max_queue_size 10000  
+
+aws s3 sync --profile=MY_PROFILE --storage-class "REDUCED_REDUNDANCY" --content-type "image/png" kitakami2016 s3://MY_BUCKET/tiles/kitakami2016/ --quiet  
+
+## make wmts.xml
+copy from here  
+https://map.ecoris.info/tiles/WMTSCapabilities.xml  
+
+edit bounding box  
+
+gdalt2tiles generate "tilemapresource.xml"
+lat lon info is in it.
+
+epsg:3857 boundingbox calculation  
+gdaltransform -s_srs epsg:4326 -t_srs epsg:3857
+
+ 
+
