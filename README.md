@@ -4,8 +4,10 @@ original(supported multi process)
 https://svn.osgeo.org/gdal/trunk/gdal/swig/python/scripts/gdal2tiles.py  
 
 ## customized point
-support "-x" option for output XYZ tile  
-no create blank file (RGB 0,0,0)  
+- support "-x" option for output XYZ tile  
+- no create blank file (RGB 0,0,0)  
+- support leaflet basemap with gsi tiles
+- support MaxNativeZoom on leaflet
 
 # usage
 gdalbuildvrt --config GDAL_CACHEMAX 10240 merge.vrt *.tif  

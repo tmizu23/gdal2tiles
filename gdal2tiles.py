@@ -2401,19 +2401,36 @@ class GDAL2Tiles(object):
 
         // Base layers
         //  .. OpenStreetMap
-        var osm = L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'});
-
-        //  .. CartoDB Positron
-        var cartodb = L.tileLayer('http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="http://cartodb.com/attributions">CartoDB</a>'});
-
-        //  .. OSM Toner
-        var toner = L.tileLayer('http://{s}.tile.stamen.com/toner/{z}/{x}/{y}.png', {attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under <a href="http://www.openstreetmap.org/copyright">ODbL</a>.'});
-
-        //  .. White background
-        var white = L.tileLayer("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEAAQMAAABmvDolAAAAA1BMVEX///+nxBvIAAAAH0lEQVQYGe3BAQ0AAADCIPunfg43YAAAAAAAAAAA5wIhAAAB9aK9BAAAAABJRU5ErkJggg==");
+        var osm = L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors',
+              maxNativeZoom:18,
+              maxZoom:24,
+              minZoom:0
+        });
+        
+        //gsi
+        var gsi = L.tileLayer('http://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+              attribution: "<a href='https://maps.gsi.go.jp/development/ichiran.html' target='_blank'>地理院タイル</a>",
+              maxNativeZoom:18,
+              maxZoom:24,
+              minZoom:0
+        });
+        //photo
+        var photo = L.tileLayer('http://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+              attribution: "<a href='https://maps.gsi.go.jp/development/ichiran.html' target='_blank'>地理院タイル</a>",
+              maxNativeZoom:18,
+              maxZoom:24,
+              minZoom:0
+        });
 
         // Overlay layers (TMS)
-        var lyr = L.tileLayer('./{z}/{x}/{y}.%(tileformat)s', {tms: %(tms)s, opacity: 0.7, attribution: "%(copyright)s"});
+        var lyr = L.tileLayer('./{z}/{x}/{y}.%(tileformat)s', {
+            tms: %(tms)s,
+            opacity: 1,
+            attribution: "%(copyright)s",
+            minZoom: %(minzoom)s,
+            maxZoom: %(maxzoom)s
+        });
 
         // Map
         var map = L.map('map', {
@@ -2421,10 +2438,10 @@ class GDAL2Tiles(object):
             zoom: %(beginzoom)s,
             minZoom: %(minzoom)s,
             maxZoom: %(maxzoom)s,
-            layers: [osm]
+            layers: [photo]
         });
 
-        var basemaps = {"OpenStreetMap": osm, "CartoDB Positron": cartodb, "Stamen Toner": toner, "Without background": white}
+        var basemaps = {"地理院（標準）": gsi,"地理院（写真）": photo,"OpenStreetMap": osm}
         var overlaymaps = {"Layer": lyr}
 
         // Title
