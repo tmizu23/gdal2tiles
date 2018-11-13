@@ -10,10 +10,11 @@ https://svn.osgeo.org/gdal/trunk/gdal/swig/python/scripts/gdal2tiles.py
 - support MaxNativeZoom on leaflet
 
 # usage
-set GDAL_PAM_ENABLED=NO #don't output aux.xml for png
+set GDAL_PAM_ENABLED=NO #don't output aux.xml for png  
+set GDAL_FILENAME_IS_UTF8=NO
 
-#if black is nodata and don't have alpha band
-gdalbuildvrt --config GDAL_CACHEMAX 10240 merge.vrt *.tif  
+#if black is nodata and don't have alpha band  
+gdalbuildvrt --config GDAL_CACHEMAX 10240 merge.vrt *.tif    
 python gdal2tiles.py --processes 5 -s epsg:6678 -z 10-20 -a "0,0,0" -x merge.vrt output  
 
 #if white is nodata and don't have alpha band
