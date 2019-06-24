@@ -13,7 +13,7 @@ https://svn.osgeo.org/gdal/trunk/gdal/swig/python/scripts/gdal2tiles.py
 on OSGeo4W
  
 ~~set GDAL_PAM_ENABLED=NO #don't output aux.xml for png~~  
-~~set GDAL_FILENAME_IS_UTF8=NO~~
+~~set GDAL_FILENAME_IS_UTF8=NO~~  
 py3_env 
 
 #if black is nodata and don't have alpha band  
