@@ -10,8 +10,11 @@ https://svn.osgeo.org/gdal/trunk/gdal/swig/python/scripts/gdal2tiles.py
 - support MaxNativeZoom on leaflet
 
 # usage
-set GDAL_PAM_ENABLED=NO #don't output aux.xml for png  
-set GDAL_FILENAME_IS_UTF8=NO
+on OSGeo4W
+ 
+~~set GDAL_PAM_ENABLED=NO #don't output aux.xml for png~~  
+~~set GDAL_FILENAME_IS_UTF8=NO~~
+py3_env 
 
 #if black is nodata and don't have alpha band  
 gdalbuildvrt --config GDAL_CACHEMAX 10240 merge.vrt *.tif    
@@ -27,13 +30,13 @@ gdalbuildvrt --config GDAL_CACHEMAX 10240 merge.vrt *.tif
 python gdal2tiles.py --processes 5 -s epsg:6678 -z 10-20 -x merge.vrt output  
 
 ## remove empty folder after gdal2tiles
-at windows console  
+on windows console  
 
 bash  
 find . -type d -empty -delete  
 
 ## upload to s3
-bash
+bash  
 pip install aws  
 aws configure --profile MY_PROFILE  
 	AWS Access Key ID [None]: MY_KEY  
