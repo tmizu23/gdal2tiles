@@ -37,7 +37,9 @@ find . -type d -empty -delete
 
 ## upload to s3
 bash  
-pip install aws  
+~~pip install aws~~  
+pip3 install awscli
+
 aws configure --profile MY_PROFILE  
 	AWS Access Key ID [None]: MY_KEY  
 	AWS Secret Access Key [None]: MY_SECRET_KEY  
